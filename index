@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>神奇毛毛蟲：變長大作戰</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #000000;
+            margin: 0;
+            overflow: hidden; /* 防止滾動 */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+            user-select: none; /* 防止文字選取干擾 */
+        }
+
+        /* 遊戲主要畫面 */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+        }
+
+        /* 毛毛蟲容器 - 改為 row 排列，尾巴在左，頭在右 */
+        #caterpillar-container {
+            position: absolute;
+            left: 5vw;
+            display: flex;
+            flex-direction: row; 
+            align-items: center;
+            /* 移除了 transform 動畫，因為現在本體不移動，而是內部元素長大 */
+        }
+
+        /* 毛毛蟲的每一節（圓形） */
+        .segment {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-color: var(--caterpillar-color);
+            margin-right: -20px; /* 讓圓形重疊 */
+            border: 4px solid #000;
+            transition: all var(--anim-duration) ease-in-out; /* 寬高、邊界都加入動畫 */
+            flex-shrink: 0; /* 防止空間不夠時被擠壓成橢圓形 */
+            box-sizing: border-box;
+        }
+
+        /* 新增圓形時的「生長初始狀態」 */
+        .segment.growing {
+            width: 0 !important;
+            height: 0 !important;
+            margin-right: 0 !important;
+            border-width: 0 !important;
+            opacity: 0;
+        }
+
+        /* 頭部特別樣式 */
+        .head {
+            width: 110px;
+            height: 110px;
+            z-index: 10;
+            position: relative;
+            background-color: var(--caterpillar-color);
+        }
+
+        /* 眼睛 */
+        .eye {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            background-color: white;
+            border-radius: 50%;
+            top: 25px;
+        }
+        .eye.left { right: 25px; }
+        .eye.right { right: 25px; top: 60px; }
+        .pupil {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: black;
+            border-radius: 50%;
+            top: 6px;
+            right: 4px;
+        }
+
+        /* 發光特效 Class */
+        .glowing .segment {
+            box-shadow: 0 0 30px 10px white;
+            background-color: #ffffff !important; /* 加入 !important 以覆蓋多色模式的行內樣式 */
+        }
+
+        /* 目標圖卡 */
+        #target-card {
+            position: absolute;
+            right: 5vw;
+            width: 150px;
+            height: 150px;
+            background-color: #333;
+            border: 5px solid yellow;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        #target-card span {
+            font-size: 3rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        #target-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none; 
+        }
+
+        #target-card.gazing {
+            border-color: #00ff00;
+            transform: scale(1.05);
+        }
+
+        /* 結算畫面 */
+        #result-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .celebrate-text {
+            font-size: 4rem;
+            font-weight: bold;
+            color: yellow;
+            margin-bottom: 2rem;
+            animation: bounce 1s infinite alternate;
+        }
+
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-20px); }
+        }
+
+        /* 設定面板 */
+        #settings-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(50, 50, 50, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 200;
+            width: 300px;
+            display: none; 
+        }
+
+        #settings-toggle {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: #444;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 201;
+        }
+
+        .setting-group { margin-bottom: 10px; }
+        .setting-group label { display: block; font-size: 0.9rem; margin-bottom: 5px; }
+        .setting-group input, .setting-group select { width: 100%; padding: 5px; color: black; }
+        
+        #gaze-progress {
+            position: absolute;
+            bottom: -15px;
+            left: 0;
+            height: 10px;
+            background-color: #00ff00;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 設定開關 -->
+    <button id="settings-toggle">⚙️ 設定</button>
+
+    <!-- 設定面板 -->
+    <div id="settings-panel">
+        <h2 class="text-xl font-bold mb-4">老師設定面板</h2>
+        <div class="setting-group">
+            <label>動畫時間 (秒): <span id="val-anim">4</span></label>
+            <input type="range" id="set-anim" min="2" max="5" step="0.5" value="4">
+        </div>
+        <div class="setting-group">
+            <label>注視時間 (秒): <span id="val-dwell">1</span></label>
+            <input type="range" id="set-dwell" min="0.2" max="2" step="0.1" value="1">
+        </div>
+        <div class="setting-group">
+            <label>冷卻時間 (秒): <span id="val-cool">2</span></label>
+            <input type="range" id="set-cool" min="0" max="5" step="0.5" value="2">
+        </div>
+        <div class="setting-group">
+            <label>需要注視總次數: <span id="val-steps">3</span></label>
+            <input type="range" id="set-steps" min="1" max="5" step="1" value="3">
+        </div>
+        <div class="setting-group">
+            <label>毛毛蟲顏色:</label>
+            <select id="set-color">
+                <option value="#00ff00" selected>螢光綠</option>
+                <option value="#ffff00">亮黃色</option>
+                <option value="#ff00ff">桃紅色</option>
+                <option value="#00ffff">青色</option>
+                <option value="multicolor">多色 (彩虹)</option>
+            </select>
+        </div>
+        <button id="btn-save-settings" class="mt-4 w-full bg-blue-600 p-2 rounded">儲存並重新開始</button>
+    </div>
+
+    <!-- 遊戲主畫面 -->
+    <div id="game-container">
+        <!-- 毛毛蟲 -->
+        <div id="caterpillar-container">
+            <div class="segment tail" id="cat-tail"></div>
+            <div class="segment head" id="cat-head">
+                <div class="eye left"><div class="pupil"></div></div>
+                <div class="eye right"><div class="pupil"></div></div>
+            </div>
+        </div>
+
+        <!-- 目標圖卡 -->
+        <div id="target-card">
+            <img id="target-img" src="long.png" alt="長" onerror="this.style.display='none'; document.getElementById('target-text').style.display='block';">
+            <span id="target-text">長</span>
+            <div id="gaze-progress"></div>
+        </div>
+    </div>
+
+    <!-- 結算畫面 -->
+    <div id="result-screen">
+        <div class="celebrate-text">好叻呀！</div>
+        <div class="text-2xl mb-8">毛毛蟲變到好長喇！</div>
+        <!-- 結算畫面的蟲蟲 (改為 row 並置中) -->
+        <div id="result-caterpillar" class="flex flex-row mb-10 scale-150 items-center justify-center"></div>
+        <button id="btn-restart" class="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-full text-2xl">
+            再玩一次
+        </button>
+    </div>
+
+    <script>
+        // --- 遊戲狀態與設定變數 ---
+        let currentStep = 0;
+        let isAnimating = false;
+        let isCoolingDown = false;
+        let gameStarted = false;
+        
+        let gazeStartTime = 0;
+        let gazeProgressInterval = null;
+
+        // 計算距離用的變數
+        let totalCirclesNeeded = 0;
+        let remainingCircles = 0;
+        let remainingSteps = 0;
+        
+        let colorIndex = 0; // 新增：追蹤多色模式的顏色索引
+        const multiColors = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#8b00ff', '#ff00ff']; // 彩虹高對比色
+
+        let config = {
+            animDuration: 4000, 
+            dwellTime: 1000,    
+            cooldown: 2000,     
+            totalSteps: 3,      
+            color: '#00ff00'    
+        };
+
+        const root = document.documentElement;
+        const container = document.getElementById('caterpillar-container');
+        const targetCard = document.getElementById('target-card');
+        const progressIndicator = document.getElementById('gaze-progress');
+        const resultScreen = document.getElementById('result-screen');
+
+        // --- 語音設定 ---
+        const synth = window.speechSynthesis;
+        function speak(text) {
+            const voices = synth.getVoices();
+            let hkVoice = voices.find(voice => voice.lang === 'zh-HK' || voice.lang === 'yue-HK');
+            const utterance = new SpeechSynthesisUtterance(text);
+            if (hkVoice) utterance.voice = hkVoice;
+            utterance.rate = 0.8;
+            synth.speak(utterance);
+        }
+
+        // --- 初始化遊戲 ---
+        function initGame() {
+            currentStep = 0;
+            isAnimating = false;
+            isCoolingDown = false;
+            gameStarted = true;
+
+            root.style.setProperty('--anim-duration', `${config.animDuration}ms`);
+            root.style.setProperty('--caterpillar-color', config.color === 'multicolor' ? '#ffffff' : config.color);
+
+            // 決定初始兩節的顏色
+            let tailBg = config.color === 'multicolor' ? multiColors[0] : config.color;
+            let headBg = config.color === 'multicolor' ? multiColors[1] : config.color;
+            colorIndex = 2; // 下一個圓形從第三個顏色開始
+
+            // 重置毛毛蟲結構：尾巴在左，頭在右
+            container.innerHTML = `
+                <div class="segment tail" id="cat-tail" style="background-color: ${tailBg};"></div>
+                <div class="segment head" id="cat-head" style="background-color: ${headBg};">
+                    <div class="eye left"><div class="pupil"></div></div>
+                    <div class="eye right"><div class="pupil"></div></div>
+                </div>
+            `;
+            
+            resultScreen.style.display = 'none';
+            progressIndicator.style.width = '0%';
+            targetCard.style.opacity = '1';
+
+            // 延遲一點點時間等待 DOM 渲染完成後，精準計算距離
+            setTimeout(() => {
+                const headRect = document.getElementById('cat-head').getBoundingClientRect();
+                const targetRect = targetCard.getBoundingClientRect();
+                
+                // 計算需要推進的總距離 (讓頭部右側貼齊圖卡左側，再多給 20px 讓牠有吃到蘋果的感覺)
+                const distanceToCover = targetRect.left - headRect.right + 20;
+                
+                // 每一個圓形扣除重疊的 20px 後，實際增加的長度是 80px
+                const segmentNetWidth = 80;
+                
+                // 計算需要多少個圓形才能填滿這個距離
+                totalCirclesNeeded = Math.max(config.totalSteps, Math.ceil(distanceToCover / segmentNetWidth));
+                remainingCircles = totalCirclesNeeded;
+                remainingSteps = config.totalSteps;
+            }, 100);
+
+            speak("毛毛蟲好想變長。");
+        }
+
+        // --- 生長觸發 ---
+        function triggerGrow() {
+            if (isAnimating || isCoolingDown || currentStep >= config.totalSteps) return;
+
+            isAnimating = true;
+            currentStep++;
+
+            speak("長、長、長");
+
+            container.classList.add('glowing');
+            targetCard.classList.remove('gazing');
+            progressIndicator.style.width = '0%';
+
+            // 計算這一步要加插多少個圓形，讓最後一次剛好抵達圖卡
+            const circlesToAdd = Math.ceil(remainingCircles / remainingSteps);
+            remainingCircles -= circlesToAdd;
+            remainingSteps--;
+
+            const head = document.getElementById('cat-head');
+            const newSegments = [];
+
+            // 在頭部前面（脖子處）加插設定為「正在生長(寬高為0)」的圓形
+            for(let i = 0; i < circlesToAdd; i++) {
+                const seg = document.createElement('div');
+                seg.className = 'segment growing';
+                
+                // 如果是多色模式，依照陣列依序給予顏色
+                if (config.color === 'multicolor') {
+                    seg.style.backgroundColor = multiColors[colorIndex % multiColors.length];
+                    colorIndex++;
+                } else {
+                    seg.style.backgroundColor = config.color;
+                }
+                
+                container.insertBefore(seg, head);
+                newSegments.push(seg);
+            }
+
+            // 強制瀏覽器重繪 (Reflow)，這樣 CSS 動畫才會生效
+            container.offsetHeight;
+
+            // 移除 growing class，圓形會花費設定的秒數慢慢長大到 100px
+            // 透過空間膨脹自然地把頭部往前推！
+            newSegments.forEach(seg => {
+                seg.classList.remove('growing');
+            });
+
+            // 等待生長動畫結束
+            setTimeout(() => {
+                container.classList.remove('glowing');
+                isAnimating = false;
+                
+                if (currentStep >= config.totalSteps) {
+                    showResult();
+                } else {
+                    isCoolingDown = true;
+                    targetCard.style.opacity = '0.5'; 
+                    setTimeout(() => {
+                        isCoolingDown = false;
+                        targetCard.style.opacity = '1';
+                    }, config.cooldown);
+                }
+            }, config.animDuration);
+        }
+
+        // --- 結算 ---
+        function showResult() {
+            resultScreen.style.display = 'flex';
+            speak("好叻呀！毛毛蟲變到好長喇！");
+            
+            const resultCat = document.getElementById('result-caterpillar');
+            resultCat.innerHTML = container.innerHTML;
+        }
+
+        // --- 眼動儀模擬 ---
+        function startGaze() {
+            if (isAnimating || isCoolingDown || currentStep >= config.totalSteps) return;
+            
+            targetCard.classList.add('gazing');
+            gazeStartTime = Date.now();
+            
+            progressIndicator.style.transition = 'none';
+            progressIndicator.style.width = '0%';
+            
+            gazeProgressInterval = setInterval(() => {
+                const elapsed = Date.now() - gazeStartTime;
+                const percentage = Math.min((elapsed / config.dwellTime) * 100, 100);
+                progressIndicator.style.width = `${percentage}%`;
+                
+                if (elapsed >= config.dwellTime) {
+                    clearInterval(gazeProgressInterval);
+                    triggerGrow();
+                }
+            }, 50);
+        }
+
+        function stopGaze() {
+            clearInterval(gazeProgressInterval);
+            targetCard.classList.remove('gazing');
+            progressIndicator.style.width = '0%';
+        }
+
+        targetCard.addEventListener('mouseenter', startGaze);
+        targetCard.addEventListener('mouseleave', stopGaze);
+        targetCard.addEventListener('touchstart', (e) => { e.preventDefault(); startGaze(); });
+        targetCard.addEventListener('touchend', stopGaze);
+
+        // --- 設定面板 ---
+        document.getElementById('settings-toggle').addEventListener('click', () => {
+            const panel = document.getElementById('settings-panel');
+            panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
+        });
+
+        const sliders = ['anim', 'dwell', 'cool', 'steps'];
+        sliders.forEach(id => {
+            document.getElementById(`set-${id}`).addEventListener('input', (e) => {
+                document.getElementById(`val-${id}`).innerText = e.target.value;
+            });
+        });
+
+        document.getElementById('btn-save-settings').addEventListener('click', () => {
+            config.animDuration = parseFloat(document.getElementById('set-anim').value) * 1000;
+            config.dwellTime = parseFloat(document.getElementById('set-dwell').value) * 1000;
+            config.cooldown = parseFloat(document.getElementById('set-cool').value) * 1000;
+            config.totalSteps = parseInt(document.getElementById('set-steps').value);
+            config.color = document.getElementById('set-color').value;
+            
+            document.getElementById('settings-panel').style.display = 'none';
+            initGame();
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', initGame);
+
+        // --- 啟動 ---
+        const startOverlay = document.createElement('div');
+        startOverlay.style.position = 'absolute';
+        startOverlay.style.top = '0';
+        startOverlay.style.left = '0';
+        startOverlay.style.width = '100vw';
+        startOverlay.style.height = '100vh';
+        startOverlay.style.backgroundColor = 'rgba(0,0,0,0.8)';
+        startOverlay.style.color = 'white';
+        startOverlay.style.display = 'flex';
+        startOverlay.style.justifyContent = 'center';
+        startOverlay.style.alignItems = 'center';
+        startOverlay.style.fontSize = '3rem';
+        startOverlay.style.zIndex = '9999';
+        startOverlay.innerHTML = '點擊畫面開始遊戲';
+        document.body.appendChild(startOverlay);
+
+        startOverlay.addEventListener('click', () => {
+            document.body.removeChild(startOverlay);
+            initGame();
+        });
+
+    </script>
+</body>
+</html>
