@@ -36,11 +36,11 @@
 
         /* 毛毛蟲的每一節（圓形） */
         .segment {
-            width: 100px;
-            height: 100px;
+            width: var(--cat-size, 100px);
+            height: var(--cat-size, 100px);
             border-radius: 50%;
             background-color: var(--caterpillar-color);
-            margin-right: -20px; /* 讓圓形重疊 */
+            margin-right: calc(var(--cat-size, 100px) * -0.2); /* 讓圓形重疊 */
             border: 4px solid #000;
             transition: all var(--anim-duration) ease-in-out; /* 寬高、邊界都加入動畫 */
             flex-shrink: 0; /* 防止空間不夠時被擠壓成橢圓形 */
@@ -58,8 +58,8 @@
 
         /* 頭部特別樣式 */
         .head {
-            width: 110px;
-            height: 110px;
+            width: calc(var(--cat-size, 100px) * 1.1);
+            height: calc(var(--cat-size, 100px) * 1.1);
             z-index: 10;
             position: relative;
             background-color: var(--caterpillar-color);
@@ -68,22 +68,22 @@
         /* 眼睛 */
         .eye {
             position: absolute;
-            width: 25px;
-            height: 25px;
+            width: calc(var(--cat-size, 100px) * 0.25);
+            height: calc(var(--cat-size, 100px) * 0.25);
             background-color: white;
             border-radius: 50%;
-            top: 25px;
+            top: calc(var(--cat-size, 100px) * 0.25);
         }
-        .eye.left { right: 25px; }
-        .eye.right { right: 25px; top: 60px; }
+        .eye.left { right: calc(var(--cat-size, 100px) * 0.25); }
+        .eye.right { right: calc(var(--cat-size, 100px) * 0.25); top: calc(var(--cat-size, 100px) * 0.6); }
         .pupil {
             position: absolute;
-            width: 12px;
-            height: 12px;
+            width: calc(var(--cat-size, 100px) * 0.12);
+            height: calc(var(--cat-size, 100px) * 0.12);
             background-color: black;
             border-radius: 50%;
-            top: 6px;
-            right: 4px;
+            top: calc(var(--cat-size, 100px) * 0.06);
+            right: calc(var(--cat-size, 100px) * 0.04);
         }
 
         /* 發光特效 Class */
@@ -118,8 +118,8 @@
         #target-card img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            display: none; 
+            object-fit: contain;
+            /* 移除了 display: none; 改由 js 判斷載入成功與否來控制顯示 */
         }
 
         #target-card.gazing {
@@ -221,6 +221,10 @@
             <input type="range" id="set-steps" min="1" max="5" step="1" value="3">
         </div>
         <div class="setting-group">
+            <label>毛毛蟲大小 (px): <span id="val-size">100</span></label>
+            <input type="range" id="set-size" min="50" max="200" step="10" value="100">
+        </div>
+        <div class="setting-group">
             <label>毛毛蟲顏色:</label>
             <select id="set-color">
                 <option value="#00ff00" selected>螢光綠</option>
@@ -246,7 +250,9 @@
 
         <!-- 目標圖卡 -->
         <div id="target-card">
-            <img id="target-img" src="long.png" alt="長" onerror="this.style.display='none'; document.getElementById('target-text').style.display='block';">
+            <img id="target-img" src="long.png" alt="長" 
+                 onload="this.style.display='block'; document.getElementById('target-text').style.display='none';" 
+                 onerror="this.style.display='none'; document.getElementById('target-text').style.display='block';">
             <span id="target-text">長</span>
             <div id="gaze-progress"></div>
         </div>
@@ -286,7 +292,8 @@
             dwellTime: 1000,    
             cooldown: 2000,     
             totalSteps: 3,      
-            color: '#00ff00'    
+            color: '#00ff00',
+            catSize: 100        // 新增：毛毛蟲大小預設值
         };
 
         const root = document.documentElement;
@@ -315,6 +322,7 @@
 
             root.style.setProperty('--anim-duration', `${config.animDuration}ms`);
             root.style.setProperty('--caterpillar-color', config.color === 'multicolor' ? '#ffffff' : config.color);
+            root.style.setProperty('--cat-size', `${config.catSize}px`); // 動態設定毛毛蟲大小
 
             // 決定初始兩節的顏色
             let tailBg = config.color === 'multicolor' ? multiColors[0] : config.color;
@@ -339,11 +347,11 @@
                 const headRect = document.getElementById('cat-head').getBoundingClientRect();
                 const targetRect = targetCard.getBoundingClientRect();
                 
-                // 計算需要推進的總距離 (讓頭部右側貼齊圖卡左側，再多給 20px 讓牠有吃到蘋果的感覺)
-                const distanceToCover = targetRect.left - headRect.right + 20;
+                // 計算需要推進的總距離 (讓頭部右側貼齊圖卡左側，再多給一點距離讓牠有吃到蘋果的感覺)
+                const distanceToCover = targetRect.left - headRect.right + (config.catSize * 0.2);
                 
-                // 每一個圓形扣除重疊的 20px 後，實際增加的長度是 80px
-                const segmentNetWidth = 80;
+                // 每一個圓形扣除重疊比例後，實際增加的長度
+                const segmentNetWidth = config.catSize * 0.8;
                 
                 // 計算需要多少個圓形才能填滿這個距離
                 totalCirclesNeeded = Math.max(config.totalSteps, Math.ceil(distanceToCover / segmentNetWidth));
@@ -467,7 +475,7 @@
             panel.style.display = panel.style.display === 'none' || panel.style.display === '' ? 'block' : 'none';
         });
 
-        const sliders = ['anim', 'dwell', 'cool', 'steps'];
+        const sliders = ['anim', 'dwell', 'cool', 'steps', 'size'];
         sliders.forEach(id => {
             document.getElementById(`set-${id}`).addEventListener('input', (e) => {
                 document.getElementById(`val-${id}`).innerText = e.target.value;
@@ -479,6 +487,7 @@
             config.dwellTime = parseFloat(document.getElementById('set-dwell').value) * 1000;
             config.cooldown = parseFloat(document.getElementById('set-cool').value) * 1000;
             config.totalSteps = parseInt(document.getElementById('set-steps').value);
+            config.catSize = parseInt(document.getElementById('set-size').value);
             config.color = document.getElementById('set-color').value;
             
             document.getElementById('settings-panel').style.display = 'none';
